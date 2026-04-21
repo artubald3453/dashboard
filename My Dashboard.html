@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>My Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body data-theme="light" data-bg="paper" data-density="regular">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="components/Segments.jsx"></script>
+<script type="text/babel" src="components/AddModal.jsx"></script>
+<script type="text/babel" src="components/TweaksPanel.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useMemo } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "oklch(62% 0.14 38)",
+  "fontPair": "Fraunces + Inter",
+  "density": "regular",
+  "bg": "paper",
+  "greeting": true,
+  "name": "Finn"
+}/*EDITMODE-END*/;
+
+const STORAGE_KEY = 'dashboard-v1';
+
+// Default segments — a sampler of everything
+const DEFAULT_SEGMENTS = [
+  {
+    id: 'seg-1', type: 'clock', title: 'Now', size: { w: 1, h: 1 },
+  },
+  {
+    id: 'seg-weather', type: 'weather', title: 'Weather', size: { w: 1, h: 2 },
+    city: 'Brooklyn, New York, US', lat: 40.6782, lon: -73.9442, tz: 'America/New_York', unit: 'F',
+  },
+  {
+    id: 'seg-todo', type: 'todo', title: 'Today', size: { w: 2, h: 2 },
+    items: [
+      { id: 't1', text: 'Design a dashboard', done: true },
+      { id: 't2', text: 'Water the monstera', done: false },
+      { id: 't3', text: 'Email back Sam about the lease', done: false },
+      { id: 't4', text: 'Read a chapter of something good', done: false },
+    ],
+  },
+  {
+    id: 'seg-links', type: 'linkgroup', title: 'Work', size: { w: 1, h: 2 },
+    links: [
+      { id: 'l1', label: 'Inbox',    url: 'https://mail.google.com' },
+      { id: 'l2', label: 'Calendar', url: 'https://calendar.google.com' },
+      { id: 'l3', label: 'Docs',     url: 'https://docs.google.com' },
+      { id: 'l4', label: 'GitHub',   url: 'https://github.com' },
+      { id: 'l5', label: 'Linear',   url: 'https://linear.app' },
+    ],
+  },
+  {
+    id: 'seg-reads', type: 'linkgroup', title: 'Reading', size: { w: 1, h: 2 },
+    links: [
+      { id: 'r1', label: 'NYT',       url: 'https://nytimes.com' },
+      { id: 'r2', label: 'Hacker News', url: 'https://news.ycombinator.com' },
+      { id: 'r3', label: 'Are.na',    url: 'https://are.na' },
+    ],
+  },
+  {
+    id: 'seg-note', type: 'note', title: 'Scratch',
+    size: { w: 2, h: 2 },
+    text: 'Pick up limes\nCall mom on Sunday\nThat song from the café — look it up',
+  },
+  {
+    id: 'seg-habit', type: 'habit', title: 'Morning walk', size: { w: 2, h: 1 },
+    days: [1,1,0,1,1,1,0,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,0,1,1,1],
+    description: '4 weeks of morning walks',
+  },
+  {
+    id: 'seg-counter', type: 'counter', title: 'Water', size: { w: 1, h: 1 },
+    value: 3, step: 1, unit: 'cups', goal: 8,
+  },
+  {
+    id: 'seg-agenda', type: 'agenda', title: 'Upcoming', size: { w: 1, h: 2 },
+    items: [
+      { id: 'a1', title: 'Dentist',       when: 'Tomorrow 10am' },
+      { id: 'a2', title: 'Book club',     when: 'Thu 7pm' },
+      { id: 'a3', title: 'Flight to SF',  when: 'Next Mon' },
+    ],
+  },
+  {
+    id: 'seg-pin', type: 'pinned', title: 'Pinned', size: { w: 1, h: 2 },
+    items: [
+      { id: 'p1', name: 'Q2 Planning',  kind: 'Doc',     url: '' },
+      { id: 'p2', name: 'Moodboard',    kind: 'Project', url: '' },
+      { id: 'p3', name: 'Budget 2026',  kind: 'Sheet',   url: '' },
+    ],
+  },
+  {
+    id: 'seg-big', type: 'biglink', title: 'Figma', size: { w: 1, h: 1 },
+    url: 'https://figma.com', subtitle: 'figma.com',
+  },
+];
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      return {
+        segments: d.segments || DEFAULT_SEGMENTS,
+        settings: { ...TWEAK_DEFAULTS, ...(d.settings || {}) },
+        theme: d.theme || 'light',
+      };
+    }
+  } catch {}
+  return { segments: DEFAULT_SEGMENTS, settings: TWEAK_DEFAULTS, theme: 'light' };
+}
+
+function save(state) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
+}
+
+function App() {
+  const initial = load();
+  const [segments, setSegments] = useState(initial.segments);
+  const [settings, setSettings] = useState(initial.settings);
+  const [theme, setTheme] = useState(initial.theme);
+  const [addOpen, setAddOpen] = useState(false);
+  const [tweaksActive, setTweaksActive] = useState(false);
+  const [now, setNow] = useState(new Date());
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
+  const [overPos, setOverPos] = useState(null); // 'before' | 'after' | 'end'
+  const [draggableId, setDraggableId] = useState(null);
+
+  // Clock for greeting
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Persist
+  useEffect(() => { save({ segments, settings, theme }); }, [segments, settings, theme]);
+
+  // Apply theme/bg/density to body
+  useEffect(() => {
+    document.body.dataset.theme = theme;
+    document.body.dataset.bg = settings.bg || 'paper';
+    document.body.dataset.density = settings.density || 'regular';
+    document.documentElement.style.setProperty('--accent', settings.accent);
+    const pair = (window.FONT_PAIRS || []).find(p => p.name === settings.fontPair);
+    if (pair) {
+      document.documentElement.style.setProperty('--font-heading', `"${pair.heading}", serif`);
+      document.documentElement.style.setProperty('--font-body', `"${pair.body}", sans-serif`);
+    }
+  }, [theme, settings]);
+
+  // Tweaks host wiring
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksActive(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksActive(false);
+    };
+    window.addEventListener('message', handler);
+    try { window.parent.postMessage({ type: '__edit_mode_available' }, '*'); } catch {}
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const greeting = useMemo(() => {
+    const h = now.getHours();
+    if (h < 5) return 'Still up,';
+    if (h < 12) return 'Good morning,';
+    if (h < 18) return 'Good afternoon,';
+    if (h < 22) return 'Good evening,';
+    return 'Good night,';
+  }, [now]);
+
+  const segmentApi = (id) => ({
+    update: (patch) => setSegments(segs => segs.map(s => s.id === id ? { ...s, ...patch } : s)),
+    remove: () => setSegments(segs => segs.filter(s => s.id !== id)),
+  });
+
+  const addSegment = (seg) => setSegments(segs => [...segs, seg]);
+
+  const onDragStart = (e, id) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', id); } catch {}
+  };
+  const onDragOver = (e, id) => {
+    if (!dragId || dragId === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    // Determine before/after based on pointer position within the tile
+    const rect = e.currentTarget.getBoundingClientRect();
+    const midX = rect.left + rect.width / 2;
+    const pos = e.clientX < midX ? 'before' : 'after';
+    if (overId !== id || overPos !== pos) { setOverId(id); setOverPos(pos); }
+  };
+  const onDragLeave = (e, id) => {
+    if (overId === id) { setOverId(null); setOverPos(null); }
+  };
+  const onDragEnd = () => {
+    setDragId(null);
+    setOverId(null);
+    setOverPos(null);
+    setDraggableId(null);
+  };
+  const onDrop = (e, targetId, posOverride) => {
+    e.preventDefault();
+    const srcId = dragId;
+    const pos = posOverride || overPos || 'before';
+    setDragId(null);
+    setOverId(null);
+    setOverPos(null);
+    setDraggableId(null);
+    if (!srcId || srcId === targetId) return;
+    setSegments(segs => {
+      const out = [...segs];
+      const from = out.findIndex(s => s.id === srcId);
+      if (from === -1) return segs;
+      const [moved] = out.splice(from, 1);
+      if (targetId === '__end__') {
+        out.push(moved);
+        return out;
+      }
+      let to = out.findIndex(s => s.id === targetId);
+      if (to === -1) return segs;
+      if (pos === 'after') to += 1;
+      out.splice(to, 0, moved);
+      return out;
+    });
+  };
+  const onDropAtEnd = (e) => onDrop(e, '__end__', 'end');
+  const onOverEnd = (e) => {
+    if (!dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (overId !== '__end__') { setOverId('__end__'); setOverPos('end'); }
+  };
+
+  const renderSegment = (seg) => {
+    const api = segmentApi(seg.id);
+    switch (seg.type) {
+      case 'linkgroup': return <LinkGroupSeg segment={seg} api={api}/>;
+      case 'biglink':   return <BigLinkSeg   segment={seg} api={api}/>;
+      case 'note':      return <NoteSeg      segment={seg} api={api}/>;
+      case 'todo':      return <TodoSeg      segment={seg} api={api}/>;
+      case 'counter':   return <CounterSeg   segment={seg} api={api}/>;
+      case 'embed':     return <EmbedSeg     segment={seg} api={api}/>;
+      case 'clock':     return <ClockSeg     segment={seg} api={api}/>;
+      case 'weather':   return <WeatherSeg   segment={seg} api={api}/>;
+      case 'habit':     return <HabitSeg     segment={seg} api={api}/>;
+      case 'feed':      return <FeedSeg      segment={seg} api={api}/>;
+      case 'pinned':    return <PinnedSeg    segment={seg} api={api}/>;
+      case 'agenda':    return <AgendaSeg    segment={seg} api={api}/>;
+      default: return <div style={{padding: 16}}>Unknown: {seg.type}</div>;
+    }
+  };
+
+  return (
+    <div className="app">
+      {settings.greeting !== false && (
+        <header className="header">
+          <div>
+            <h1 className="greeting">{greeting} <span className="accent">{settings.name || 'friend'}</span>.</h1>
+            <div className="sub">
+              {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+              <span className="dot">·</span>
+              {now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+              <span className="dot">·</span>
+              {segments.length} segments
+            </div>
+          </div>
+          <div className="header-actions">
+            <button className="top-btn" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} title="Toggle theme">
+              {theme === 'light' ? <Ico.moon width="14" height="14"/> : <Ico.sun width="14" height="14"/>}
+              {theme === 'light' ? 'Dark' : 'Light'}
+            </button>
+            <button className="top-btn" onClick={() => setTweaksActive(a => !a)}>
+              <Ico.gear width="14" height="14"/> Customize
+            </button>
+            <button className="top-btn primary" onClick={() => setAddOpen(true)}>
+              <Ico.plus width="14" height="14"/> Add segment
+            </button>
+          </div>
+        </header>
+      )}
+
+      <div className="bento">
+        {segments.map(seg => (
+          <div
+            key={seg.id}
+            className={`tile-wrap ${dragId === seg.id ? 'dragging' : ''} ${overId === seg.id ? 'drag-over drag-' + overPos : ''}`}
+            data-w={seg.size?.w || 1}
+            data-h={seg.size?.h || 1}
+            draggable={draggableId === seg.id}
+            onMouseDown={(e) => {
+              if (e.target.closest('[data-drag]')) setDraggableId(seg.id);
+            }}
+            onMouseUp={() => { if (!dragId) setDraggableId(null); }}
+            onDragStart={(e) => onDragStart(e, seg.id)}
+            onDragOver={(e) => onDragOver(e, seg.id)}
+            onDragLeave={(e) => onDragLeave(e, seg.id)}
+            onDragEnd={onDragEnd}
+            onDrop={(e) => onDrop(e, seg.id)}
+          >
+            {renderSegment(seg)}
+          </div>
+        ))}
+        <div
+          className={`tile-wrap ${overId === '__end__' ? 'drag-over drag-end' : ''}`}
+          data-w="1" data-h="1"
+          onDragOver={onOverEnd}
+          onDragLeave={() => { if (overId === '__end__') { setOverId(null); setOverPos(null); } }}
+          onDrop={onDropAtEnd}
+        >
+          <button className="add-segment-tile" onClick={() => setAddOpen(true)}>
+            <span className="plus-big"><Ico.plus width="20" height="20"/></span>
+            <span className="add-segment-label">Add segment</span>
+          </button>
+        </div>
+      </div>
+
+      <AddModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={addSegment}/>
+      <TweaksPanel active={tweaksActive} settings={settings} setSettings={setSettings}/>
+    </div>
+  );
+}
+
+// Wait a tick so the sub-scripts finish loading and register globals
+function mount() {
+  if (!window.LinkGroupSeg || !window.AddModal || !window.TweaksPanel) {
+    return setTimeout(mount, 20);
+  }
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(<App/>);
+}
+mount();
+</script>
+</body>
+</html>
